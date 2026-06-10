@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Environment variables (keep secrets out of version control)
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+build/
+/generated/prisma
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+
+# Uploads & local runtime files
+uploads/
+
+# Misc
+*.local
