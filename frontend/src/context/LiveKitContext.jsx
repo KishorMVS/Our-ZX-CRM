@@ -276,47 +276,15 @@ export const LiveKitProvider = ({ children }) => {
 
         console.log("[LIVEKIT_CONTEXT] Room Name generated:", roomName, "Target User ID:", targetUserId);
 
-        // ── Presence gate (1:1 calls only) ────────────────────────────────────
-        // Group calls have many members, so we skip the precheck for them.
-        let calleeName = null; // captured from precheck for later "busy" notice
+        // ── Resolve callee name (1:1 calls only) ──────────────────────────────
+        // Presence no longer gates the call: a user can be reached in any state
+        // (online, on break, or offline). We only fetch the name for later notices.
+        let calleeName = null;
         if (targetUserId) {
             try {
                 const { data: presence } = await api.get(`/chat/call-precheck/${targetUserId}`);
-                const targetName = presence.name || "This user";
                 calleeName = presence.name || null;
-
-                if (presence.onlineStatus === "OFFLINE") {
-                    // Block, inform, and drop a missed-call entry into the conversation.
-                    alert(`${targetName} is offline. They'll see a missed-call note in the chat.`);
-                    try {
-                        const { data: started } = await api.post("/chat/start", { targetUserId });
-                        await api.post("/chat/call-event", {
-                            channelCid: started.cid,
-                            calleeId: targetUserId,
-                            callType: type.toUpperCase(),
-                            status: "BLOCKED_OFFLINE",
-                            startedAt: new Date().toISOString(),
-                            endedAt: new Date().toISOString(),
-                        });
-                    } catch (logErr) {
-                        console.error("[CALL_PRECHECK] failed to log offline miss:", logErr);
-                    }
-                    setCallState({ status: "idle", roomName: null, token: null, serverUrl: null });
-                    return;
-                }
-
-                if (presence.onlineStatus === "BREAK") {
-                    const proceed = window.confirm(
-                        `${targetName} is currently on break. Do you still want to call them?`
-                    );
-                    if (!proceed) {
-                        setCallState({ status: "idle", roomName: null, token: null, serverUrl: null });
-                        return;
-                    }
-                }
             } catch (precheckErr) {
-                // If the precheck endpoint fails, fall through and attempt the call
-                // rather than blocking the user on an infrastructure hiccup.
                 console.error("[CALL_PRECHECK] error (continuing):", precheckErr);
             }
         }
