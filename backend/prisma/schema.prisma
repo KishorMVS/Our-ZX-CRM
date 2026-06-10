@@ -1,0 +1,903 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   String          @id @default(uuid())
+  name                 String
+  email                String          @unique
+  phone                String?
+  password             String
+  isActive             Boolean         @default(true)
+  department           String?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  departmentId         String?
+  jobTitle             String?
+  preferences          Json?
+  workspaceId          String?
+  profilePhoto         String?
+  breakStartedAt       DateTime?
+  lastSeen             DateTime?
+  onlineStatus         OnlineStatus    @default(OFFLINE)
+  role                 Role            @default(EMPLOYEE)
+  manualCompOffBalance Int?            @default(0)
+  maxCapacity          Int             @default(10)
+  isC2C                Boolean         @default(false)
+  canCreateGroup       Boolean         @default(false)
+  telecmiUserId        Int?            @map("telecmiExtension")
+  telecmiAgentId       String?
+  activities           Activity[]
+  attendances          Attendance[]
+  invoices             Invoice[]       @relation("CreatedInvoices")
+  assignedLeads        Lead[]          @relation("PrimaryAssignee")
+  leaves               Leave[]
+  leaveApprovals       LeaveApproval[] @relation("ApproverLeaves")
+  slas                 SLA[]           @relation("CreatedSLAs")
+  sessions             Session[]
+  tasks                Task[]
+  createdTasks         Task[]          @relation("CreatedTasks")
+  createdSprints       Sprint[]        @relation("CreatedSprints")
+  taskComments         TaskComment[]
+  departmentRel        Department?     @relation(fields: [departmentId], references: [id])
+  workspace            Workspace?      @relation(fields: [workspaceId], references: [id])
+  statusLogs           UserStatusLog[]
+  collaboratingLeads   Lead[]          @relation("LeadAssignments")
+  voiceLinkClient      VoiceLinkClient?
+  superAdminDIDs       DIDNumber[]     @relation("SuperAdminDIDs")
+  allocatedDIDs        DIDNumber[]     @relation("AllocatedDIDs")
+  assignedDID          DIDNumber?      @relation("AssignedDID")
+  meetingRecordings    MeetingRecording[]
+  callsMade            CallEvent[]     @relation("CallsMade")
+  callsReceived        CallEvent[]     @relation("CallsReceived")
+}
+
+model UserStatusLog {
+  id        String       @id @default(uuid())
+  userId    String
+  status    OnlineStatus
+  note      String?
+  changedAt DateTime     @default(now())
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, changedAt])
+}
+
+model Lead {
+  id              String         @id @default(uuid())
+  name            String
+  email           String?
+  phone           String?
+  source          LeadSource
+  enquiryType     String         // free-form; allowed values configured per workspace in CompanySettings.enquiryTypes
+  status          LeadStatus     @default(NEW)
+  assignedToId    String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  category        String?
+  firstResponseAt DateTime?
+  score           Int            @default(0)
+  workspaceId     String?
+  biodata         String?
+  company         String?
+  isSearchLead    Boolean        @default(false)
+  jobTitle        String?
+  linkedinUrl     String?
+  salesNotes      String?
+  tags            String[]
+  scoreUpdated    Boolean        @default(false)
+  activities      Activity[]
+  callLogs        CallLog[]
+  assignedTo      User?          @relation("PrimaryAssignee", fields: [assignedToId], references: [id])
+  workspace       Workspace?     @relation(fields: [workspaceId], references: [id])
+  notes           Note[]
+  tasks           Task[]
+  assignedReps    User[]         @relation("LeadAssignments")
+
+  // AI Outbound Call Pipeline
+  callStatus      String?           // pending | queued | calling | completed | failed | skipped
+  assistantId     String?           // ZenVoice assistant ID used for this lead
+  assistantType   String?           // product | service | default
+  zenvoiceCallId  String?           // Call ID returned by ZenVoice API
+  lastCallAttempt DateTime?
+  callRetryCount  Int        @default(0)
+  autoCallEnabled Boolean    @default(true)
+
+  // Meta Ads Integration Fields
+  metaLeadId       String?   @unique
+  metaPlatform     String?
+  metaCampaignId   String?
+  metaCampaignName String?
+  metaAdsetId      String?
+  metaAdsetName    String?
+  metaAdId         String?
+  metaAdName       String?
+  metaFormId       String?
+
+  // Gmail Integration Fields
+  gmailMessageId   String?   @unique
+  gmailThreadId    String?
+  gmailSenderEmail String?
+  gmailSenderName  String?
+  gmailSubject     String?
+  gmailLabelIds    Json?
+  gmailReceivedAt  DateTime?
+}
+
+model Note {
+  id        String   @id @default(uuid())
+  leadId    String?
+  content   String
+  createdAt DateTime @default(now())
+  lead      Lead?    @relation(fields: [leadId], references: [id])
+}
+
+model Sprint {
+  id          String       @id @default(uuid())
+  name        String
+  goal        String?
+  startDate   DateTime
+  endDate     DateTime
+  status      SprintStatus @default(PLANNING)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  workspaceId String?
+  createdById String?
+  workspace   Workspace?   @relation(fields: [workspaceId], references: [id])
+  createdBy   User?        @relation("CreatedSprints", fields: [createdById], references: [id])
+  tasks       Task[]
+}
+
+model Task {
+  id             String        @id @default(uuid())
+  title          String
+  leadId         String?
+  assignedToId   String?
+  dueDate        DateTime
+  status         TaskStatus    @default(PENDING)
+  actualHours    Float?
+  completedAt    DateTime?
+  description    String?
+  estimatedHours Float?
+  kanbanStatus   KanbanStatus  @default(TODO)
+  labels         String[]
+  orderIndex     Int           @default(0)
+  priority       Priority      @default(MEDIUM)
+  sprintId       String?
+  storyPoints    Int?
+  type           TaskType      @default(TASK)
+  updatedAt      DateTime      @default(now()) @updatedAt
+  workspaceId    String?
+  createdById    String?
+  assignedTo     User?         @relation(fields: [assignedToId], references: [id])
+  createdBy      User?         @relation("CreatedTasks", fields: [createdById], references: [id])
+  lead           Lead?         @relation(fields: [leadId], references: [id])
+  sprint         Sprint?       @relation(fields: [sprintId], references: [id])
+  workspace      Workspace?    @relation(fields: [workspaceId], references: [id])
+  comments       TaskComment[]
+  files          TaskFile[]
+}
+
+model TaskComment {
+  id        String   @id @default(uuid())
+  taskId    String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model TaskFile {
+  id        String   @id @default(uuid())
+  taskId    String
+  fileName  String
+  fileUrl   String
+  fileSize  Int
+  mimeType  String
+  createdAt DateTime @default(now())
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model Integration {
+  id            String     @id @default(uuid())
+  workspaceId   String?
+  workspace     Workspace? @relation(fields: [workspaceId], references: [id])
+  platform      String
+  name          String     @default("")
+  isActive      Boolean    @default(false)
+  isConnected   Boolean    @default(false)
+  config        Json?
+  leadsCaptures Int        @default(0)
+  lastLeadAt    DateTime?
+  lastSynced    DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@unique([workspaceId, platform])
+}
+
+model Activity {
+  id        String   @id @default(uuid())
+  leadId    String?
+  userId    String?
+  action    String
+  metadata  Json?
+  createdAt DateTime @default(now())
+  lead      Lead?    @relation(fields: [leadId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
+}
+
+model Reminder {
+  id       String   @id @default(uuid())
+  leadId   String?
+  taskId   String?
+  userId   String
+  remindAt DateTime
+  message  String
+  isSent   Boolean  @default(false)
+}
+
+model Commission {
+  id        String   @id @default(uuid())
+  userId    String
+  leadId    String
+  amount    Float
+  createdAt DateTime @default(now())
+}
+
+model Permission {
+  id       String @id @default(uuid())
+  resource String
+  action   String
+  role     Role
+
+  @@unique([role, resource, action])
+}
+
+model CallLog {
+  id            String    @id @default(uuid())
+  leadId        String?
+  userId        String
+  duration      Int       @default(0)
+  callType      String    @default("OUTBOUND")
+  createdAt     DateTime  @default(now())
+  callStatus    String?
+  recordingUrl  String?
+  agentNumber   String?
+  callDate      DateTime?
+  greeterCallId String?
+  transcription String?
+  plainText     String?
+  summary       String?
+  tone          String?
+  urgency       String?
+  emotion       String?
+  callCategory  String?
+  sentiment     String?
+  feedback      String?
+  conclusion    String?
+  isTranscribed Boolean   @default(false)
+  transcribedAt DateTime?
+  sessionId     String?
+  toNumber      String?
+  fromNumber    String?
+  cmiuuid       String?
+  workspaceId   String?
+  lead          Lead?     @relation(fields: [leadId], references: [id])
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  device    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Workspace {
+  id              String           @id @default(uuid())
+  name            String
+  slug            String           @unique
+  logo            String?
+  brandColor      String?
+  plan            String           @default("FREE")
+  status          String           @default("ACTIVE")
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  leads           Lead[]
+  users           User[]
+  departments     Department[]
+  companySettings CompanySettings?
+  integrations    Integration[]
+  slaTemplates    SLATemplate[]
+  voiceLinkClient VoiceLinkClient?
+  zxCallRequests  ZXCallRequest[]
+  sprints         Sprint[]
+  tasks           Task[]
+  campaigns       Campaign[]
+  customRoles     CustomRole[]
+}
+
+model CustomRole {
+  id          String             @id @default(uuid())
+  name        String
+  workspaceId String
+  createdAt   DateTime           @default(now())
+  permissions CustomPermission[]
+  workspace   Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, name])
+}
+
+model CustomPermission {
+  id           String     @id @default(uuid())
+  customRoleId String
+  resource     String
+  action       String
+  customRole   CustomRole @relation(fields: [customRoleId], references: [id], onDelete: Cascade)
+
+  @@unique([customRoleId, resource, action])
+}
+
+model Department {
+  id             String     @id @default(uuid())
+  name           String
+  workspaceId    String?
+  c2c            Boolean    @default(false)
+  hasLeadsAccess Boolean    @default(false)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  users          User[]
+  workspace      Workspace? @relation(fields: [workspaceId], references: [id])
+
+  @@unique([name, workspaceId])
+}
+
+model Attendance {
+  id        String           @id @default(uuid())
+  userId    String
+  date      DateTime         @default(now()) @db.Date
+  checkIn   DateTime?
+  checkOut  DateTime?
+  status    AttendanceStatus @default(PRESENT)
+  createdAt DateTime         @default(now())
+  location  Json?
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+model Leave {
+  id        String          @id @default(uuid())
+  userId    String
+  fromDate  DateTime        @db.Date
+  toDate    DateTime        @db.Date
+  totalDays Int
+  reason    String
+  status    LeaveStatus     @default(PENDING)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  leaveType String          @default("LEAVE")
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  approvals LeaveApproval[]
+
+  @@index([userId, status])
+}
+
+model LeaveApproval {
+  id         String         @id @default(uuid())
+  leaveId    String
+  approverId String
+  status     ApprovalStatus @default(PENDING)
+  comments   String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  approver   User           @relation("ApproverLeaves", fields: [approverId], references: [id], onDelete: Cascade)
+  leave      Leave          @relation(fields: [leaveId], references: [id], onDelete: Cascade)
+
+  @@unique([leaveId, approverId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  type      String
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+}
+
+model Invoice {
+  id            String         @id @default(uuid())
+  invoiceNumber String         @unique
+  invoiceType   InvoiceType    @default(PROFORMA)
+  clientName    String
+  clientEmail   String?
+  clientPhone   String?
+  clientAddress String?
+  clientGstin   String?
+  clientPan     String?
+  subtotal      Float
+  cgst          Float          @default(0)
+  sgst          Float          @default(0)
+  igst          Float          @default(0)
+  total         Float
+  status        InvoiceStatus  @default(DRAFT)
+  dueDate       DateTime?
+  notes         String?
+  emailSentAt   DateTime?
+  emailSentTo   String?
+  paymentLink   String?
+  signatureUrl  String?
+  createdById   String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  createdBy     User           @relation("CreatedInvoices", fields: [createdById], references: [id])
+  items         InvoiceItem[]
+  payments      PaymentEntry[]
+}
+
+model InvoiceItem {
+  id           String  @id @default(uuid())
+  invoiceId    String
+  description  String
+  price        Float
+  quantity     Float   @default(1)
+  taxRate      Float   @default(18)
+  taxableValue Float
+  amount       Float
+  invoice      Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+}
+
+model PaymentEntry {
+  id          String      @id @default(uuid())
+  invoiceId   String
+  amount      Float
+  type        PaymentType @default(CREDIT)
+  description String?
+  paymentDate DateTime    @default(now())
+  createdAt   DateTime    @default(now())
+  invoice     Invoice     @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+}
+
+model CompanySettings {
+  id                String     @id @default(uuid())
+  workspaceId       String?    @unique
+  workspace         Workspace? @relation(fields: [workspaceId], references: [id])
+  companyName       String   @default("")
+  shortName         String   @default("")
+  gstin             String   @default("")
+  address           String   @default("")
+  city              String   @default("")
+  state             String   @default("")
+  pincode           String   @default("")
+  phone             String   @default("")
+  email             String   @default("")
+  website           String   @default("")
+  placeOfSupply     String   @default("")
+  pan               String   @default("")
+  webhookBaseUrl    String?
+  bankName          String   @default("")
+  accountNo         String   @default("")
+  ifsc              String   @default("")
+  branch            String   @default("")
+  defaultTaxRate    Float    @default(18)
+  defaultNotes      String   @default("")
+  updatedAt         DateTime @updatedAt
+  voiceLinkToken    String   @default("")
+  providerSignature String?
+  fasterqApiKey     String   @default("")
+  captureToken      String   @default("")
+  smtpEmail         String   @default("")
+  smtpPassword      String   @default("")
+  smtpFromName      String   @default("")
+  defaultPaymentLink String   @default("")
+  logoUrl           String?
+  autoCallEnabled     Boolean    @default(false)
+  callScoringConfig   Json?
+  // Per-workspace configurable lead enquiry types (free-form, editable in Settings)
+  enquiryTypes        String[]   @default(["PRODUCT", "SERVICES", "LMS", "WHITE_LABEL"])
+}
+
+model SLATemplate {
+  id          String     @id @default(uuid())
+  workspaceId String?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id])
+  name        String
+  fileName    String
+  filePath    String
+  isDefault   Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model SLA {
+  id                 String         @id @default(uuid())
+  slaNumber          String         @unique
+  clientName         String?
+  clientEmail        String?
+  clientPhone        String?
+  clientAddress      String?
+  services           Json
+  totalAmount        Float
+  advanceAmount      Float
+  balanceAmount      Float
+  effectiveDate      DateTime       @default(now())
+  expiryDate         DateTime
+  notes              String?
+  status             SLAStatus      @default(PENDING_SIGNATURE)
+  emailSentAt        DateTime?
+  emailSentTo        String?
+  createdById        String
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  signedAt           DateTime?
+  signedPdfPath      String?
+  signingToken       String?        @unique
+  signingTokenExpiry DateTime?
+  signingUrl         String?
+  signaturesRequired Int            @default(1)
+  templateId         String?
+  createdBy          User           @relation("CreatedSLAs", fields: [createdById], references: [id])
+  SLASignature       SLASignature[]
+}
+
+model SLASignature {
+  id             String   @id @default(uuid())
+  slaId          String
+  slot           Int
+  signerName     String?
+  signerEmail    String?
+  signerCompany  String?
+  signerAddress  String?
+  signerPhone    String?
+  signatureImage String?
+  signedAt       DateTime @default(now())
+  ipAddress      String?
+  sla            SLA      @relation(fields: [slaId], references: [id], onDelete: Cascade)
+}
+
+model Campaign {
+  id          String     @id @default(uuid())
+  name        String?
+  type        String     @default("CALL")
+  assistantId String
+  status      String     @default("PENDING")
+  imported    Int        @default(0)
+  skipped     Int        @default(0)
+  results     Json?
+  jobId       String?
+  creatorId   String
+  workspaceId String?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id])
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model VoiceLinkClient {
+  id           String     @id @default(uuid())
+  clientId     Int        @unique
+  userId       String?    @unique
+  workspaceId  String?    @unique
+  username     String
+  password     String
+  token        String?
+  tokenExpiry  DateTime?
+  channelCount Int
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  user         User?      @relation(fields: [userId], references: [id])
+  workspace    Workspace? @relation(fields: [workspaceId], references: [id])
+}
+
+model DIDNumber {
+  id                   String    @id @default(uuid())
+  number               String    @unique
+  voicelinkDIDId       String?
+  country              String?
+  type                 String?
+  superAdminId         String
+  status               DIDStatus @default(AVAILABLE)
+  allocatedToAdminId   String?
+  assignedToEmployeeId String?   @unique
+  allocatedAt          DateTime?
+  assignedAt           DateTime?
+  createdAt            DateTime  @default(now())
+  // Cloud dialer fields
+  sipAddress           String?
+  authUsername         String?
+  authPassword         String?
+  inboundEnabled       Boolean   @default(true)
+  outboundEnabled      Boolean   @default(true)
+  routingId            String?
+  vlClientId           Int?
+  superAdmin           User      @relation("SuperAdminDIDs", fields: [superAdminId], references: [id])
+  allocatedToAdmin     User?     @relation("AllocatedDIDs", fields: [allocatedToAdminId], references: [id])
+  assignedToEmployee   User?     @relation("AssignedDID", fields: [assignedToEmployeeId], references: [id])
+
+  @@index([superAdminId])
+  @@index([allocatedToAdminId])
+}
+
+model ZenCallEvent {
+  id           String    @id @default(cuid())
+  callId       String    @unique
+  from         String
+  to           String
+  direction    String
+  status       String
+  duration     Int?
+  recordingUrl String?
+  did          String?
+  userId       String?
+  workspaceId  String?
+  startedAt    DateTime?
+  endedAt      DateTime?
+  rawPayload   Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([workspaceId])
+  @@index([userId])
+  @@index([did])
+  @@index([createdAt])
+}
+
+model ZXCallRequest {
+  id                       String     @id @default(uuid())
+  workspaceId              String?
+  workspace                Workspace? @relation(fields: [workspaceId], references: [id])
+  requestedById            String?
+  // Submitted business details
+  gstNumber                String     @default("")
+  companyName              String     @default("")
+  contactName              String     @default("")
+  email                    String     @default("")
+  phone                    String     @default("")
+  // Uploaded document paths
+  gstCertificate           String?
+  incorporationCertificate String?
+  aadharCard               String?
+  // Capacity & pricing
+  agents                   Int        @default(0)
+  channels                 Int        @default(0)
+  userLimit                Int        @default(0)
+  baseAmount               Float      @default(0)
+  gstAmount                Float      @default(0)
+  totalAmount              Float      @default(0)
+  // Lifecycle: PENDING_PAYMENT | PAID | ACTIVE
+  status                   String     @default("PENDING_PAYMENT")
+  orderId                  String?
+  paymentId                String?
+  paidAt                   DateTime?
+  activatedAt              DateTime?
+  // Provisioning credentials assigned by platform owner on activation
+  appId                    String?    @map("sipUserId")
+  secretKey                String?
+  didNumber                String?
+  createdAt                DateTime   @default(now())
+  updatedAt                DateTime   @updatedAt
+
+  @@index([workspaceId])
+  @@index([status])
+}
+
+enum LeadSource {
+  FACEBOOK
+  INSTAGRAM
+  GMAIL
+  WEBSITE
+  PHONE_CALL
+  LINKEDIN
+  CALENDLY
+  META_ADS
+  GOOGLE_ADS
+  GOOGLE_SHEETS
+  WEB_FORM
+  WEBHOOK
+}
+
+enum EnquiryType {
+  PRODUCT
+  WHITE_LABEL
+  LMS
+  SERVICES
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  FOLLOW_UP
+  CONVERTED
+  LOST
+  AI_CONTACTED
+  ASSIGNED
+  IN_PROGRESS
+  QUEUED_FOR_CALL
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LEAVE
+  HALF_DAY
+  WFH
+  COMP_OFF_EARNED
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum OnlineStatus {
+  ONLINE
+  OFFLINE
+  BREAK
+}
+
+enum TaskStatus {
+  PENDING
+  COMPLETED
+}
+
+enum SprintStatus {
+  PLANNING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum Priority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum TaskType {
+  EPIC
+  STORY
+  TASK
+  BUG
+  SUBTASK
+}
+
+enum KanbanStatus {
+  BACKLOG
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+  BLOCKED
+}
+
+enum InvoiceType {
+  PROFORMA
+  TAX_INVOICE
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+enum PaymentType {
+  CREDIT
+  DEBIT
+}
+
+enum SLAStatus {
+  DRAFT
+  SENT
+  PENDING_SIGNATURE
+  SIGNED
+}
+
+enum Role {
+  EMPLOYEE
+  ADMIN
+  TEAM_LEAD
+  SUPER_ADMIN
+  PLATFORM_OWNER
+}
+
+enum CallType {
+  AUDIO
+  VIDEO
+}
+
+enum CallStatus {
+  ANSWERED
+  MISSED
+  DECLINED
+  CANCELLED
+  BLOCKED_OFFLINE
+}
+
+enum DIDStatus {
+  AVAILABLE
+  ALLOCATED_TO_ADMIN
+  ASSIGNED_TO_EMPLOYEE
+}
+
+model MetaIntegration {
+  id             String   @id @default(uuid())
+  email          String
+  encryptedToken String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model GmailIntegration {
+  id                    String   @id @default(uuid())
+  workspaceId           String?
+  email                 String
+  encryptedRefreshToken String
+  encryptedAccessToken  String
+  watchExpiry           DateTime?
+  historyId             String?
+  labelFilters          Json?
+  autoAssignUserId      String?
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model MeetingRecording {
+  id        String   @id @default(uuid())
+  roomName  String
+  fileName  String
+  fileUrl   String
+  fileSize  Int
+  duration  Int?     // in seconds
+  createdAt DateTime @default(now())
+  creatorId String
+  creator   User     @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+}
+
+// In-app (peer-to-peer) chat call history — distinct from CallLog (lead telephony).
+model CallEvent {
+  id          String     @id @default(uuid())
+  workspaceId String?
+  channelCid  String
+  callerId    String
+  calleeId    String?
+  callType    CallType
+  status      CallStatus
+  startedAt   DateTime
+  answeredAt  DateTime?
+  endedAt     DateTime?
+  durationSec Int        @default(0)
+  createdAt   DateTime   @default(now())
+  caller      User       @relation("CallsMade", fields: [callerId], references: [id], onDelete: Cascade)
+  callee      User?      @relation("CallsReceived", fields: [calleeId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([callerId])
+  @@index([calleeId])
+  @@index([channelCid])
+}
