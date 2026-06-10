@@ -151,6 +151,7 @@ app.use("/api/fasterq", require("./routes/fasterq"));
 app.use("/api/company-settings", require("./routes/companySettings"));
 app.use("/api/demo-booking", require("./routes/demoBooking"));
 app.use("/api/notifications", require("./routes/notification"));
+app.use("/api/meetings", require("./routes/meeting"));
 app.use("/api/permissions", require("./routes/permission"));
 app.use("/api/voicelink", require("./routes/voicelink"));
 app.use("/api/payments", require("./routes/payment"));

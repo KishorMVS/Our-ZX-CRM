@@ -18,8 +18,9 @@ import { useLiveKit } from "../context/LiveKitContext";
 import { useAuth } from "../context/AuthContext";
 import { useMessageNotification } from "../context/MessageNotificationContext";
 import api from "../api/axios";
-import { Loader2, Video, Search, Plus, X, User, UserPlus, Users, Check, CheckCheck, Trash2, Phone, Trophy, PhoneMissed, PhoneOutgoing, PhoneIncoming } from "lucide-react";
+import { Loader2, Video, Search, Plus, X, User, UserPlus, Users, Check, CheckCheck, Trash2, Phone, Trophy, PhoneMissed, PhoneOutgoing, PhoneIncoming, Pencil, Minus } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import Calendar from "./Calendar";
 
 // Custom Empty State for when no chat is selected
 const EmptyState = () => (
@@ -141,6 +142,7 @@ const Messages = () => {
     const [showMemberList, setShowMemberList] = useState(false);
     const [showMessageInfo, setShowMessageInfo] = useState(false);
     const [selectedMessage, setSelectedMessage] = useState(null);
+    const [view, setView] = useState("chat"); // "chat" | "calendar"
 
     // Pick up calls accepted from the IncomingCallWidget on another page.
     // The active call UI is rendered globally by LiveKitContext (CallPopup /
@@ -158,15 +160,6 @@ const Messages = () => {
         queryFn: async () => (await api.get("/chat/users")).data,
         enabled: !!user
     });
-
-    if (!chatClient) {
-        return (
-            <div className="flex-1 flex flex-col items-center justify-center p-20 bg-white">
-                <Loader2 className="animate-spin h-10 w-10 text-indigo-600 mb-4" />
-                <p className="text-gray-500 font-medium animate-pulse">Connecting to chat...</p>
-            </div>
-        );
-    }
 
     const startDirectChat = async (otherUserId) => {
         try {
@@ -218,9 +211,37 @@ const Messages = () => {
     ) || [];
 
     return (
-        <div className="h-full bg-white shadow-xl rounded-xl overflow-hidden border border-gray-200">
-            {/* Unified Chat Provider */}
-            <Chat client={chatClient} theme="messaging light">
+        <div className="h-full flex flex-col">
+            {/* View tabs — chat and calendar live together under Teams */}
+            <div className="flex items-center gap-1 mb-3 bg-gray-100 p-1 rounded-lg w-fit">
+                <button
+                    onClick={() => setView("chat")}
+                    className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${view === "chat" ? "bg-white text-indigo-600 shadow" : "text-gray-500 hover:text-gray-700"}`}
+                >
+                    Chat
+                </button>
+                <button
+                    onClick={() => setView("calendar")}
+                    className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${view === "calendar" ? "bg-white text-indigo-600 shadow" : "text-gray-500 hover:text-gray-700"}`}
+                >
+                    + Schedule Meeting
+                </button>
+            </div>
+
+            <div className="flex-1 min-h-0">
+                {view === "calendar" ? (
+                    <div className="h-full overflow-y-auto pr-1">
+                        <Calendar />
+                    </div>
+                ) : !chatClient ? (
+                    <div className="h-full flex flex-col items-center justify-center p-20 bg-white rounded-xl border border-gray-200">
+                        <Loader2 className="animate-spin h-10 w-10 text-indigo-600 mb-4" />
+                        <p className="text-gray-500 font-medium animate-pulse">Connecting to chat...</p>
+                    </div>
+                ) : (
+                    <div className="h-full bg-white shadow-xl rounded-xl overflow-hidden border border-gray-200">
+                        {/* Unified Chat Provider */}
+                        <Chat client={chatClient} theme="messaging light">
                 <div className="flex w-full h-full">
                         {/* Sidebar */}
                         <div className="w-80 flex-shrink-0 border-r border-gray-200 flex flex-col bg-gray-50/50">
@@ -381,6 +402,7 @@ const Messages = () => {
                                                 <MemberListModal
                                                     channel={activeChannel}
                                                     onClose={() => setShowMemberList(false)}
+                                                    onAddMember={() => { setShowMemberList(false); setShowAddMember(true); }}
                                                     currentUser={user}
                                                 />
                                             )}
@@ -403,7 +425,10 @@ const Messages = () => {
                             </Channel>
                         </div>
                     </div>
-            </Chat>
+                        </Chat>
+                    </div>
+                )}
+            </div>
         </div>
     );
 };
@@ -488,6 +513,33 @@ const CustomChannelHeader = ({ onAddMember, onShowMembers, onDeleteChannel }) =>
     const canManageGroup = ["SUPER_ADMIN", "ADMIN"].includes(user?.role) ||
         (user?.canCreateGroup && channel?.data?.created_by_id === user?.id);
 
+    // Inline group-name editing (creator or CRM admin only).
+    const [isEditingName, setIsEditingName] = useState(false);
+    const [nameDraft, setNameDraft] = useState("");
+    const [savingName, setSavingName] = useState(false);
+
+    const handleSaveName = async () => {
+        const trimmed = nameDraft.trim();
+        if (!trimmed || trimmed === channel?.data?.name) {
+            setIsEditingName(false);
+            return;
+        }
+        setSavingName(true);
+        try {
+            await api.patch("/chat/group-name", {
+                channelId: channel.id,
+                type: channel.type,
+                name: trimmed,
+            });
+            setIsEditingName(false);
+        } catch (error) {
+            console.error("Failed to rename group:", error);
+            alert(error.response?.data?.message || "Failed to rename group.");
+        } finally {
+            setSavingName(false);
+        }
+    };
+
     // Derive all display variables from channel state
     const members = Object.values(channel?.state?.members || {}).filter(m => m.user?.id !== user?.id);
     const displayName = channel?.data?.name || members.map(m => m.user?.name).join(", ") || "Chat";
@@ -554,8 +606,41 @@ const CustomChannelHeader = ({ onAddMember, onShowMembers, onDeleteChannel }) =>
                     )}
                 </div>
                 <div>
-                    <div className="font-bold text-gray-900 leading-tight">
-                        {displayName}
+                    <div className="font-bold text-gray-900 leading-tight flex items-center gap-1.5">
+                        {isEditingName ? (
+                            <span className="flex items-center gap-1">
+                                <input
+                                    autoFocus
+                                    value={nameDraft}
+                                    onChange={(e) => setNameDraft(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter") handleSaveName();
+                                        if (e.key === "Escape") setIsEditingName(false);
+                                    }}
+                                    disabled={savingName}
+                                    className="text-sm font-bold border border-indigo-300 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
+                                />
+                                <button onClick={handleSaveName} disabled={savingName} className="p-1 text-green-600 hover:bg-green-50 rounded">
+                                    {savingName ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                                </button>
+                                <button onClick={() => setIsEditingName(false)} className="p-1 text-red-500 hover:bg-red-50 rounded">
+                                    <X className="h-3.5 w-3.5" />
+                                </button>
+                            </span>
+                        ) : (
+                            <>
+                                {displayName}
+                                {isTeamChannel && canManageGroup && (
+                                    <button
+                                        onClick={() => { setNameDraft(channel?.data?.name || ""); setIsEditingName(true); }}
+                                        className="p-1 text-gray-400 hover:text-indigo-600 rounded transition-colors"
+                                        title="Rename group"
+                                    >
+                                        <Pencil className="h-3.5 w-3.5" />
+                                    </button>
+                                )}
+                            </>
+                        )}
                     </div>
                     <div className="flex items-center gap-1.5">
                         {statusUI ? (
@@ -820,27 +905,41 @@ const AddMemberModal = ({ channel, onClose, allUsers }) => {
     );
 };
 
-// Member List Modal
-const MemberListModal = ({ channel, onClose, currentUser }) => {
+// Member List Modal — view members, add existing users (+), and remove one or many (−)
+const MemberListModal = ({ channel, onClose, onAddMember, currentUser }) => {
     const [loading, setLoading] = useState(false);
+    const [selected, setSelected] = useState([]);
 
     const members = Object.values(channel?.state?.members || {});
     const isOwner = channel?.data?.created_by_id === currentUser?.id;
     const isCrmAdmin = ["SUPER_ADMIN", "ADMIN"].includes(currentUser?.role);
+    const isTeamChannel = channel?.type === "team";
+    const canManage = isTeamChannel && (isOwner || isCrmAdmin);
 
-    const handleRemoveMember = async (userId) => {
-        if (!confirm("Are you sure you want to remove this member from the group?")) return;
+    const toggleSelect = (userId) => {
+        setSelected((prev) =>
+            prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+        );
+    };
+
+    const removeMembers = async (ids) => {
+        if (ids.length === 0) return;
+        if (!confirm(`Remove ${ids.length} member${ids.length > 1 ? "s" : ""} from the group?`)) return;
 
         setLoading(true);
         try {
-            await channel.removeMembers([userId]);
+            await channel.removeMembers(ids);
+            setSelected((prev) => prev.filter((id) => !ids.includes(id)));
         } catch (error) {
-            console.error("Failed to remove member:", error);
-            alert("Failed to remove member. Please try again.");
+            console.error("Failed to remove members:", error);
+            alert("Failed to remove member(s). Please try again.");
         } finally {
             setLoading(false);
         }
     };
+
+    const handleRemoveSelected = () => removeMembers(selected);
+    const handleRemoveOne = (userId) => removeMembers([userId]);
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -851,9 +950,20 @@ const MemberListModal = ({ channel, onClose, currentUser }) => {
                         <h2 className="text-xl font-bold text-gray-900">Group Members</h2>
                         <p className="text-xs text-gray-500 mt-1">{members.length} people in this conversation</p>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white rounded-full text-gray-400 hover:text-gray-600 transition-colors">
-                        <X className="h-5 w-5" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {canManage && onAddMember && (
+                            <button
+                                onClick={onAddMember}
+                                className="p-2 bg-green-600 text-white rounded-full hover:bg-green-700 transition-all active:scale-95"
+                                title="Add member"
+                            >
+                                <Plus className="h-5 w-5" />
+                            </button>
+                        )}
+                        <button onClick={onClose} className="p-2 hover:bg-white rounded-full text-gray-400 hover:text-gray-600 transition-colors">
+                            <X className="h-5 w-5" />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Member List */}
@@ -867,11 +977,25 @@ const MemberListModal = ({ channel, onClose, currentUser }) => {
                             const isCreator = member.user_id === channel?.data?.created_by_id;
                             const isSelf = member.user_id === currentUser?.id;
                             // Owners or CRM Admins can remove anyone EXCEPT the creator or themselves
-                            const canRemove = (isOwner || isCrmAdmin) && !isCreator && !isSelf;
+                            const canRemove = canManage && !isCreator && !isSelf;
+                            const isChecked = selected.includes(member.user_id);
 
                             return (
-                                <div key={member.user_id} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl transition-all">
+                                <div
+                                    key={member.user_id}
+                                    onClick={() => canRemove && toggleSelect(member.user_id)}
+                                    className={`flex items-center justify-between p-3 rounded-xl transition-all ${isChecked ? "bg-red-50" : "hover:bg-gray-50"} ${canRemove ? "cursor-pointer" : ""}`}
+                                >
                                     <div className="flex items-center gap-3">
+                                        {canRemove && (
+                                            <input
+                                                type="checkbox"
+                                                checked={isChecked}
+                                                onChange={() => toggleSelect(member.user_id)}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                                            />
+                                        )}
                                         <div className="relative">
                                             <img
                                                 src={member.user?.image || `https://ui-avatars.com/api/?name=${member.user?.name}`}
@@ -898,12 +1022,12 @@ const MemberListModal = ({ channel, onClose, currentUser }) => {
                                     </div>
                                     {canRemove && (
                                         <button
-                                            onClick={() => handleRemoveMember(member.user_id)}
+                                            onClick={(e) => { e.stopPropagation(); handleRemoveOne(member.user_id); }}
                                             disabled={loading}
                                             className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all active:scale-95 disabled:opacity-50"
                                             title="Remove from group"
                                         >
-                                            <Trash2 className="h-5 w-5" />
+                                            <Minus className="h-5 w-5" />
                                         </button>
                                     )}
                                 </div>
@@ -911,6 +1035,21 @@ const MemberListModal = ({ channel, onClose, currentUser }) => {
                         })}
                     </div>
                 </div>
+
+                {/* Footer — remove selected */}
+                {canManage && selected.length > 0 && (
+                    <div className="p-4 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between">
+                        <span className="text-sm text-gray-600 font-medium">{selected.length} selected</span>
+                        <button
+                            onClick={handleRemoveSelected}
+                            disabled={loading}
+                            className="inline-flex items-center gap-1.5 px-4 py-2 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 transition-all active:scale-95 disabled:opacity-50"
+                        >
+                            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Minus className="h-4 w-4" />}
+                            Remove Selected
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );

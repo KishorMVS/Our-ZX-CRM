@@ -17,6 +17,7 @@ import Reports from "./pages/Reports";
 import Departments from "./pages/Departments";
 import DepartmentDetails from "./pages/DepartmentDetails";
 import Messages from "./pages/Messages";
+import Calendar from "./pages/Calendar";
 import Attendance from "./pages/Attendance";
 import Leave from "./pages/Leave";
 import Leaderboard from "./pages/Leaderboard";
@@ -105,6 +106,7 @@ function App() {
                                             <Route path="/departments" element={<Departments />} />
                                             <Route path="/departments/:id" element={<DepartmentDetails />} />
                                             <Route path="/messages" element={<Messages />} />
+                                            <Route path="/calendar" element={<Calendar />} />
                                             <Route path="/attendance" element={<Attendance />} />
                                             <Route path="/leave" element={<Leave />} />
                                             <Route path="/leaderboard" element={<Leaderboard />} />

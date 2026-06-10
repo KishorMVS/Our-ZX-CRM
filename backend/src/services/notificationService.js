@@ -232,4 +232,76 @@ const notifyOverdueTasks = async () => {
     if (tasks.length > 0) console.log(`[Notifications] Overdue alerts sent for ${tasks.length} task(s).`);
 };
 
-module.exports = { createNotification, notifyIfLeaderboardWinner, notifyLeaderboardWinner, notifyTasksDueSoon, notifyOverdueTasks };
+/**
+ * Returns today's occurrence start Date for a meeting given its recurrence,
+ * or null if it does not occur today (e.g. weekend on an "except weekends" rule,
+ * or a one-off meeting not scheduled for today).
+ */
+const occurrenceStartForToday = (meeting, now) => {
+    const base = new Date(meeting.startAt);
+
+    if (meeting.recurrence === "NONE") {
+        return base.toDateString() === now.toDateString() ? base : null;
+    }
+
+    const day = now.getDay(); // 0 = Sun, 6 = Sat
+    if (meeting.recurrence === "DAILY_EXCEPT_WEEKENDS" && (day === 0 || day === 6)) return null;
+    if (meeting.recurrence === "DAILY_EXCEPT_SUNDAY" && day === 0) return null;
+
+    // Today at the same wall-clock time as the original start.
+    const occ = new Date(now);
+    occ.setHours(base.getHours(), base.getMinutes(), 0, 0);
+    return occ;
+};
+
+/**
+ * Fires in-app reminder notifications for upcoming meeting occurrences based on
+ * each attendee's own reminderMinutes. Recurrence-safe via lastRemindedKey.
+ * Intended to run every minute via the scheduler.
+ */
+const notifyUpcomingMeetings = async () => {
+    const now = new Date();
+
+    // Candidate meetings: recurring ones, or one-offs occurring today.
+    const startOfDay = new Date(now); startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(now); endOfDay.setHours(23, 59, 59, 999);
+
+    const meetings = await prisma.meeting.findMany({
+        where: {
+            OR: [
+                { recurrence: { not: "NONE" } },
+                { recurrence: "NONE", startAt: { gte: startOfDay, lte: endOfDay } },
+            ],
+        },
+        include: { attendees: true },
+    });
+
+    for (const meeting of meetings) {
+        const occStart = occurrenceStartForToday(meeting, now);
+        if (!occStart) continue;
+
+        const occKey = occStart.toISOString().slice(0, 16); // unique per occurrence (to the minute)
+        const minutesUntil = (occStart.getTime() - now.getTime()) / 60000;
+        if (minutesUntil < 0) continue; // occurrence already started
+
+        for (const att of meeting.attendees) {
+            if (att.lastRemindedKey === occKey) continue;        // already reminded for this occurrence
+            if (minutesUntil > att.reminderMinutes) continue;    // not yet within this attendee's window
+
+            await createNotification({
+                userId: att.userId,
+                title: `⏰ Upcoming meeting: ${meeting.title}`,
+                message: `"${meeting.title}" starts at ${occStart.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" })}.`,
+                type: "MEETING_REMINDER",
+                link: "/calendar",
+            }).catch(() => {});
+
+            await prisma.meetingAttendee.update({
+                where: { id: att.id },
+                data: { lastRemindedKey: occKey },
+            }).catch(() => {});
+        }
+    }
+};
+
+module.exports = { createNotification, notifyIfLeaderboardWinner, notifyLeaderboardWinner, notifyTasksDueSoon, notifyOverdueTasks, notifyUpcomingMeetings };

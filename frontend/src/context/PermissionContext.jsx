@@ -42,8 +42,8 @@ export const PermissionProvider = ({ children }) => {
         // SUPER_ADMIN and ADMIN have all operational permissions
         if (user?.role === "SUPER_ADMIN" || user?.role === "ADMIN") return true;
 
-        // EMPLOYEE and TEAM_LEAD: leads module requires department leads-access flag
-        if (resource === "leads" && !user?.departmentHasLeadsAccess) return false;
+        // Workspace chat and the meeting calendar are available to every role.
+        if (resource === "messages" || resource === "calendar") return true;
 
         return permissions.some(
             (p) => p.resource === resource && p.action === action

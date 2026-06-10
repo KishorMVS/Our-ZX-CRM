@@ -19,6 +19,9 @@ const addUserSchema = z.object({
     department: z.string().optional(),
     jobTitle: z.string().optional(),
     canCreateGroup: z.boolean().optional(),
+    smtpEmail: z.string().email("Invalid email").optional().or(z.literal("")),
+    smtpPassword: z.string().optional(),
+    smtpFromName: z.string().optional(),
 });
 
 const AddUserForm = ({ onClose }) => {
@@ -225,6 +228,41 @@ const AddUserForm = ({ onClose }) => {
                     </label>
                 </div>
             )}
+
+            {/* Per-user email sending (SMTP) — optional */}
+            <div className="rounded-md border border-gray-200 bg-gray-50 p-3 space-y-3">
+                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Email Sending (SMTP) — optional</p>
+                <p className="text-xs text-gray-400 -mt-1">Used as the sender identity for mail this user sends (e.g. meeting invites). Leave blank to use the company default.</p>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">SMTP Email</label>
+                        <input
+                            type="email"
+                            {...register("smtpEmail")}
+                            placeholder="user@company.com"
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2"
+                        />
+                        {errors.smtpEmail && <p className="text-red-500 text-xs">{errors.smtpEmail.message}</p>}
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">SMTP App Password</label>
+                        <input
+                            type="password"
+                            {...register("smtpPassword")}
+                            placeholder="App password"
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2"
+                        />
+                    </div>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">From Name</label>
+                    <input
+                        {...register("smtpFromName")}
+                        placeholder="e.g. John from Sales"
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2"
+                    />
+                </div>
+            </div>
 
             {mutation.isError && (
                 <p className="text-red-600 text-xs font-medium">

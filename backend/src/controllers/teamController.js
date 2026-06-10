@@ -8,7 +8,7 @@ const { isDeptScopedAdmin } = require("../utils/workspaceScope");
 const createUser = async (req, res) => {
     try {
         const { name, email, phone, role: roleName, department, password, jobTitle,
-                canCreateGroup } = req.body;
+                canCreateGroup, smtpEmail, smtpPassword, smtpFromName } = req.body;
         const workspaceId = req.user.workspaceId;
 
         const existingUser = await prisma.user.findUnique({ where: { email } });
@@ -85,6 +85,10 @@ const createUser = async (req, res) => {
                 // Group creation is only meaningful for a TEAM_LEAD and may only be
                 // granted by an Admin / Super Admin (admins implicitly have it anyway).
                 canCreateGroup: roleName === "TEAM_LEAD" ? !!canCreateGroup : false,
+                // Optional per-user SMTP (used as the sender identity for this user's mail).
+                smtpEmail: smtpEmail || null,
+                smtpPassword: smtpPassword || null,
+                smtpFromName: smtpFromName || null,
             }
         });
 
@@ -107,7 +111,7 @@ const createUser = async (req, res) => {
             }
         }
 
-        const { password: _, ...userWithoutPassword } = newUser;
+        const { password: _, smtpPassword: __, ...userWithoutPassword } = newUser;
         res.status(201).json({
             message: c2cWarning || "User created successfully",
             warning: c2cWarning,
@@ -152,9 +156,11 @@ const getTeam = async (req, res) => {
         });
 
         const formattedTeam = team.map(user => {
-            const { password, ...rest } = user;
+            const { password, smtpPassword, ...rest } = user;
             return {
                 ...rest,
+                // Expose only whether per-user SMTP is configured, never the secret.
+                hasSmtp: !!(user.smtpEmail && smtpPassword),
                 leadCount: user._count.assignedLeads
             };
         });
@@ -195,7 +201,7 @@ const updateUser = async (req, res) => {
     try {
         const { id } = req.params;
         const { name, phone, role: roleName, department, jobTitle,
-                canCreateGroup } = req.body;
+                canCreateGroup, smtpEmail, smtpPassword, smtpFromName } = req.body;
         const workspaceId = req.user.workspaceId;
 
         const existing = await prisma.user.findFirst({
@@ -240,6 +246,12 @@ const updateUser = async (req, res) => {
 
         const updateData = { name, phone, department: effectiveDepartment, departmentId, jobTitle };
         if (roleName) updateData.role = roleName;
+
+        // Per-user SMTP — update only fields that were supplied; never wipe the
+        // password with a blank value (lets you fill in SMTP later without retyping).
+        if (smtpEmail !== undefined) updateData.smtpEmail = smtpEmail || null;
+        if (smtpFromName !== undefined) updateData.smtpFromName = smtpFromName || null;
+        if (smtpPassword) updateData.smtpPassword = smtpPassword;
 
         // Group-creation grant: only meaningful for a TEAM_LEAD. If the effective role
         // is TEAM_LEAD, apply an explicitly-supplied flag; if the user is being moved
@@ -308,7 +320,7 @@ const updateUser = async (req, res) => {
             });
         }
 
-        const { password, ...rest } = updatedUser;
+        const { password, smtpPassword: _smtpPw, ...rest } = updatedUser;
         res.json({ ...rest, ...(c2cWarning ? { warning: c2cWarning } : {}), ...(c2cPassword ? { c2cPassword } : {}) });
     } catch (error) {
         res.status(500).json({ message: "Error updating user", error: error.message });

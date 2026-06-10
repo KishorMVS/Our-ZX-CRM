@@ -3,7 +3,7 @@ const { processReminders } = require("./services/reminderService");
 const { runStatusAutomation } = require("./services/automationService");
 const autoCheckout = require("./jobs/autoCheckout");
 const autoBreakOffline = require("./jobs/autoBreakOffline");
-const { notifyLeaderboardWinner, notifyTasksDueSoon, notifyOverdueTasks } = require("./services/notificationService");
+const { notifyLeaderboardWinner, notifyTasksDueSoon, notifyOverdueTasks, notifyUpcomingMeetings } = require("./services/notificationService");
 const { syncCallLogs, syncPiopiyCDR } = require("./services/zenvoiceService");
 const autoTranscribePendingCalls = require("./jobs/autoTranscribeJob");
 
@@ -13,6 +13,13 @@ const startScheduler = () => {
     // Check Reminders every 5 minutes
     cron.schedule("*/5 * * * *", () => {
         processReminders();
+    });
+
+    // Meeting reminders — runs every minute for accurate lead-time delivery
+    cron.schedule("* * * * *", () => {
+        notifyUpcomingMeetings().catch(err =>
+            console.error("[Scheduler] Meeting reminder job failed:", err.message)
+        );
     });
 
     // Auto-offline users who've been on break for more than 1 hour (runs every 5 minutes)

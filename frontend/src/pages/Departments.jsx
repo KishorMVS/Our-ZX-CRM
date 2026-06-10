@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Building, Loader2, Users } from "lucide-react";
+import { Plus, Trash2, Building, Loader2 } from "lucide-react";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
 import { useForm } from "react-hook-form";
@@ -11,7 +11,6 @@ import * as z from "zod";
 const departmentSchema = z.object({
     name: z.string().min(2, "Department name must be at least 2 characters"),
     c2c: z.boolean().optional(),
-    hasLeadsAccess: z.boolean().optional(),
 });
 
 const Departments = () => {
@@ -46,30 +45,15 @@ const Departments = () => {
         onError: (error) => { alert(error.response?.data?.message || "Failed to delete department"); }
     });
 
-    const updateFlagMutation = useMutation({
-        mutationFn: async ({ id, field, value }) => api.patch(`/departments/${id}`, { [field]: value }),
-        onSuccess: () => { queryClient.invalidateQueries(["departments"]); },
-        onError: (err) => { alert(err.response?.data?.message || "Failed to update department"); }
-    });
-
-    const { register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm({
+    const { register, handleSubmit, reset, formState: { errors } } = useForm({
         resolver: zodResolver(departmentSchema),
-        defaultValues: { c2c: false, hasLeadsAccess: false },
+        defaultValues: { c2c: false },
     });
-
-    // Leads access only applies to C2C departments. When C2C is turned on,
-    // default leads access ON (admin can then "remove lead access"); when off,
-    // force it off so the two stay consistent with the backend invariant.
-    const c2cChecked = watch("c2c");
-    useEffect(() => {
-        setValue("hasLeadsAccess", Boolean(c2cChecked));
-    }, [c2cChecked, setValue]);
 
     const onSubmit = (data) => {
         createMutation.mutate({
             name: data.name,
             c2c: Boolean(data.c2c),
-            hasLeadsAccess: Boolean(data.c2c) && Boolean(data.hasLeadsAccess),
         });
     };
 
@@ -132,17 +116,8 @@ const Departments = () => {
                                 <input type="checkbox" {...register("c2c")}
                                     className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
                                 <span className="font-medium">C2C (click-to-call)</span>
-                                <span className="text-xs text-gray-400">— only C2C members use leads and take calls</span>
+                                <span className="text-xs text-gray-400">— only C2C members take calls</span>
                             </label>
-                            {/* Leads access is a sub-option of C2C — revealed only when C2C is enabled */}
-                            {c2cChecked && (
-                                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer ml-6">
-                                    <input type="checkbox" {...register("hasLeadsAccess")}
-                                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
-                                    <span className="font-medium">Leads Access</span>
-                                    <span className="text-xs text-gray-400">— uncheck to remove lead access for this team</span>
-                                </label>
-                            )}
                         </div>
                     </form>
                 </div>
@@ -160,27 +135,12 @@ const Departments = () => {
                                         {dept.c2c && (
                                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-100 text-sky-700">C2C</span>
                                         )}
-                                        {dept.hasLeadsAccess && (
-                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 flex items-center gap-1">
-                                                <Users className="h-2.5 w-2.5" /> Leads
-                                            </span>
-                                        )}
                                     </h3>
                                     <p className="text-xs text-gray-500">{dept._count?.users || 0} Employees</p>
                                 </div>
                             </Link>
                             {isAdmin && (
                                 <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-                                    {/* Leads access toggle is only meaningful for C2C departments */}
-                                    {dept.c2c && (
-                                        <button
-                                            onClick={() => updateFlagMutation.mutate({ id: dept.id, field: "hasLeadsAccess", value: !dept.hasLeadsAccess })}
-                                            title={dept.hasLeadsAccess ? "Revoke leads access" : "Grant leads access"}
-                                            className={`text-xs font-bold px-2.5 py-1 rounded-lg border transition-colors ${dept.hasLeadsAccess ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100" : "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100"}`}
-                                        >
-                                            {dept.hasLeadsAccess ? "Leads: ON" : "Leads: OFF"}
-                                        </button>
-                                    )}
                                     {dept._count?.users === 0 && (
                                         <button
                                             onClick={() => { if (confirm("Delete this department?")) deleteMutation.mutate(dept.id); }}

@@ -14,6 +14,9 @@ const editUserSchema = z.object({
     department: z.string().optional(),
     jobTitle: z.string().optional(),
     canCreateGroup: z.boolean().optional(),
+    smtpEmail: z.string().email("Invalid email").optional().or(z.literal("")),
+    smtpPassword: z.string().optional(),
+    smtpFromName: z.string().optional(),
 });
 
 const EditUserForm = ({ user, onClose }) => {
@@ -34,7 +37,10 @@ const EditUserForm = ({ user, onClose }) => {
             role: user.role,
             department: user.department || "",
             jobTitle: user.jobTitle || "",
-            canCreateGroup: !!user.canCreateGroup
+            canCreateGroup: !!user.canCreateGroup,
+            smtpEmail: user.smtpEmail || "",
+            smtpPassword: "",
+            smtpFromName: user.smtpFromName || ""
         }
     });
 
@@ -57,6 +63,8 @@ const EditUserForm = ({ user, onClose }) => {
             setValue("department", user.department);
             setValue("jobTitle", user.jobTitle);
             setValue("canCreateGroup", !!user.canCreateGroup);
+            setValue("smtpEmail", user.smtpEmail || "");
+            setValue("smtpFromName", user.smtpFromName || "");
         }
     }, [user, setValue]);
 
@@ -159,6 +167,43 @@ const EditUserForm = ({ user, onClose }) => {
                     Admins can always create groups.
                 </p>
             )}
+
+            {/* Per-user email sending (SMTP) — fill in later if it was left blank at creation */}
+            <div className="rounded-md border border-gray-200 bg-gray-50 p-3 space-y-3">
+                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Email Sending (SMTP){user.smtpEmail ? "" : " — not set"}
+                </p>
+                <p className="text-xs text-gray-400 -mt-1">Used as the sender identity for mail this user sends. Leave the password blank to keep the existing one.</p>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">SMTP Email</label>
+                        <input
+                            type="email"
+                            {...register("smtpEmail")}
+                            placeholder="user@company.com"
+                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        />
+                        {errors.smtpEmail && <p className="text-red-500 text-xs mt-1">{errors.smtpEmail.message}</p>}
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">SMTP App Password</label>
+                        <input
+                            type="password"
+                            {...register("smtpPassword")}
+                            placeholder={user.smtpEmail ? "•••••• (unchanged)" : "App password"}
+                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        />
+                    </div>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">From Name</label>
+                    <input
+                        {...register("smtpFromName")}
+                        placeholder="e.g. John from Sales"
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    />
+                </div>
+            </div>
 
             <div className="flex justify-end pt-2">
                 <button

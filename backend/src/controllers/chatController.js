@@ -363,6 +363,38 @@ const deleteChannel = async (req, res) => {
     }
 };
 
+// Rename Group (team channel) — creator or CRM admin only
+const renameGroup = async (req, res) => {
+    try {
+        const { channelId, type, name } = req.body;
+        const userId = req.user.userId;
+        const userRole = req.user.role;
+
+        if (!channelId) return res.status(400).json({ message: "Channel ID is required" });
+        const trimmed = (name || "").trim();
+        if (!trimmed) return res.status(400).json({ message: "Group name is required" });
+
+        const streamClient = getStreamClient();
+        const channel = streamClient.channel(type || "team", channelId);
+
+        const state = await channel.query();
+        const createdById = state.channel.created_by?.id;
+
+        const isAdmin = ["ADMIN", "SUPER_ADMIN"].includes(userRole);
+        const isCreator = createdById === userId;
+        if (!isAdmin && !isCreator) {
+            return res.status(403).json({ message: "Only the group creator or an admin can rename this group." });
+        }
+
+        await channel.update({ name: trimmed }, { text: `Group renamed to "${trimmed}"`, user_id: userId });
+
+        res.json({ message: "Group renamed successfully", name: trimmed });
+    } catch (error) {
+        console.error("Error renaming group:", error);
+        res.status(500).json({ message: "Failed to rename group", error: error.message });
+    }
+};
+
 // ── Call precheck — presence gate before ringing a 1:1 call ──────────────────
 // Returns the target's live presence so the caller can decide whether to ring.
 // Enforces same-workspace (you can only call contacts in your workspace).
@@ -578,6 +610,7 @@ module.exports = {
     syncAllUsers,
     upsertUserToStream,
     deleteChannel,
+    renameGroup,
     streamWebhook,
     callPrecheck,
     logCallEvent,

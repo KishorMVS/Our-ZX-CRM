@@ -21,31 +21,47 @@ const globalTransporter = nodemailer.createTransport({
     },
 });
 
-// ── Per-workspace transporter ─────────────────────────────────────────────────
-const getWorkspaceTransporter = async (workspaceId) => {
+// Build a per-account transporter from raw SMTP creds.
+const buildTransporter = (email, password) =>
+    nodemailer.createTransport({
+        host:   smtpHostFor(email),
+        port:   587,
+        secure: false,
+        auth: { user: email, pass: password },
+    });
+
+// ── Transporter resolution: per-user SMTP → per-workspace SMTP → global ───────
+// Pass `fromUserId` to send mail from a specific user's own SMTP identity.
+const getWorkspaceTransporter = async (workspaceId, fromUserId) => {
     const globalFrom = `"ZenXAI CRM" <${process.env.SMTP_FROM || process.env.SMTP_USER || ""}>`;
+
+    // 1. Per-user SMTP (highest priority — "sent by who created it")
+    if (fromUserId) {
+        const u = await prisma.user.findUnique({
+            where: { id: fromUserId },
+            select: { name: true, smtpEmail: true, smtpPassword: true, smtpFromName: true },
+        });
+        if (u?.smtpEmail && u?.smtpPassword) {
+            const fromName = u.smtpFromName || u.name || "CRM";
+            return { transporter: buildTransporter(u.smtpEmail, u.smtpPassword), from: `"${fromName}" <${u.smtpEmail}>` };
+        }
+    }
 
     if (!workspaceId) return { transporter: globalTransporter, from: globalFrom };
 
+    // 2. Per-workspace SMTP
     const settings = await prisma.companySettings.findFirst({ where: { workspaceId } });
     if (!settings?.smtpEmail || !settings?.smtpPassword) {
         return { transporter: globalTransporter, from: globalFrom };
     }
 
-    const transporter = nodemailer.createTransport({
-        host:   smtpHostFor(settings.smtpEmail),
-        port:   587,
-        secure: false,
-        auth: { user: settings.smtpEmail, pass: settings.smtpPassword },
-    });
-
     const fromName = settings.smtpFromName || settings.companyName || "CRM";
-    return { transporter, from: `"${fromName}" <${settings.smtpEmail}>` };
+    return { transporter: buildTransporter(settings.smtpEmail, settings.smtpPassword), from: `"${fromName}" <${settings.smtpEmail}>` };
 };
 
 // ── Core send ─────────────────────────────────────────────────────────────────
-const sendEmail = async ({ to, subject, text, html, attachments, workspaceId }) => {
-    const { transporter, from } = await getWorkspaceTransporter(workspaceId);
+const sendEmail = async ({ to, subject, text, html, attachments, workspaceId, fromUserId }) => {
+    const { transporter, from } = await getWorkspaceTransporter(workspaceId, fromUserId);
     try {
         await transporter.sendMail({
             from, to, subject, text, html,

@@ -146,4 +146,7 @@ router.post("/sync-user", chatController.syncUserToStream);
 router.post("/sync-all-users", roleMiddleware(["SUPER_ADMIN"]), chatController.syncAllUsers);
 router.delete("/delete-channel", chatController.deleteChannel);
 
+// Rename a group channel — gated to the creator or a CRM admin inside the controller.
+router.patch("/group-name", chatController.renameGroup);
+
 module.exports = router;
